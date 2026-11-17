@@ -63,10 +63,10 @@
       <p class="keyboard" hidden>↑ ← ↓ → · เดิน<br>K · Skill &nbsp;&nbsp; L · Ult</p>
     </section>
   </div>
-  <footer class="lobby-footer"><span>ใช้ Wi‑Fi เดียวกับโน้ตบุ๊ก</span><label>เครือข่าย <select id="network"></select></label></footer>
+  <footer class="lobby-footer"><span id="network-hint">ใช้ Wi-Fi เดียวกับโน้ตบุ๊ก</span><label>เครือข่าย <select id="network"></select></label></footer>
   <dialog id="share-tv-dialog" class="share-dialog" aria-labelledby="share-tv-title">
     <h2 id="share-tv-title">เปิดเกมบนอีกเครื่อง</h2>
-    <p>เปิดลิงก์นี้จากคอมที่อยู่บน Wi‑Fi เดียวกัน เครื่องที่รันเกมต้องเปิดอยู่</p>
+    <p id="share-tv-hint">เปิดลิงก์จากเครื่องที่อยู่บน Wi-Fi เดียวกัน เครื่องหลักต้องเปิดอยู่</p>
     <label for="share-tv-url">ลิงก์หน้าเกม</label>
     <input id="share-tv-url" readonly>
     <p class="share-status" id="share-tv-status" role="status">ผู้ที่มีลิงก์นี้สามารถควบคุมแมตช์ได้</p>

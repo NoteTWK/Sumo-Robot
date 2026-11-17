@@ -12,6 +12,11 @@ const { qrSvg } = require('./qr.cjs');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const port = Number(process.env.PORT || 8787);
+const publicUrl = process.env.PUBLIC_URL ? new URL(process.env.PUBLIC_URL) : null;
+if (publicUrl && (publicUrl.protocol !== 'https:' || publicUrl.username || publicUrl.password ||
+    publicUrl.pathname !== '/' || publicUrl.search || publicUrl.hash)) {
+  throw new Error('PUBLIC_URL must be an HTTPS origin, for example https://game.example.com');
+}
 const publicDir = path.join(__dirname, 'public');
 const game = new Game();
 const codes = [0, 1].map(() => randomBytes(8).toString('hex'));
@@ -235,12 +240,24 @@ function receivePad(player, data, socket) {
 }
 
 function allowedHost(host) {
-  return host && ['localhost', '127.0.0.1', ...networkHosts()].some(ip => host === ip + ':' + port);
+  return host && (host === publicUrl?.host ||
+    ['localhost', '127.0.0.1', ...networkHosts()].some(ip => host === ip + ':' + port));
+}
+
+function requestOrigin(req) {
+  return req.headers.host === publicUrl?.host ? publicUrl.origin : 'http://' + req.headers.host;
+}
+
+function isLocalScreen(req) {
+  // A tunnel also reaches us over loopback. Its visitors must never inherit host privileges.
+  return req.socket.remoteAddress === '127.0.0.1' &&
+    req.headers.host !== publicUrl?.host && !req.headers['x-forwarded-for'] &&
+    !req.headers['forwarded'] && !req.headers['cf-connecting-ip'];
 }
 
 const server = http.createServer(async (req, res) => {
   try {
-    const local = req.socket.remoteAddress === '127.0.0.1';
+    const local = isLocalScreen(req);
     const hosts = networkHosts();
     const host = req.headers.host;
     if (!allowedHost(host)) {
@@ -254,11 +271,12 @@ const server = http.createServer(async (req, res) => {
     const screenAccess = local || authorizedTv || joining;
     res.setHeader('Referrer-Policy', 'no-referrer');
     if (joining) {
-      res.setHeader('Set-Cookie', tvCookie + '=' + tvKey + '; Path=/; HttpOnly; SameSite=Strict');
+      res.setHeader('Set-Cookie', tvCookie + '=' + tvKey + '; Path=/; HttpOnly; SameSite=Strict' +
+        (host === publicUrl?.host ? '; Secure' : ''));
     }
     const code = url.searchParams.get('k');
     const player = codes.indexOf(code);
-    if (req.method === 'POST' && req.headers.origin && req.headers.origin !== 'http://' + host) {
+    if (req.method === 'POST' && req.headers.origin && req.headers.origin !== requestOrigin(req)) {
       return respond(res, 403, { error: 'Unknown origin' });
     }
 
@@ -273,6 +291,8 @@ const server = http.createServer(async (req, res) => {
         };
       });
       if (!links.length) links.push({ ip: '127.0.0.1', urls: codes.map(k => 'http://127.0.0.1:' + port + '/pad?k=' + k) });
+      if (publicUrl) links.unshift({ ip: 'internet', label: 'ออนไลน์ · Wi-Fi อื่น / 4G / 5G',
+        urls: codes.map(k => publicUrl.origin + '/pad?k=' + k) });
       return respond(res, 200, { robots: ROBOTS, arenas: ARENAS, links, session });
     }
     if (route === '/api/events' && req.method === 'GET' && screenAccess) {
@@ -284,8 +304,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (route === '/api/qr' && req.method === 'GET' && screenAccess) {
       const ip = url.searchParams.get('ip');
-      if (player < 0 || ![...hosts, '127.0.0.1'].includes(ip)) return respond(res, 400, {});
-      return respond(res, 200, qrSvg('http://' + ip + ':' + port + '/pad?k=' + code), 'image/svg+xml');
+      if (player < 0 || ![...hosts, '127.0.0.1', ...(publicUrl ? ['internet'] : [])].includes(ip)) return respond(res, 400, {});
+      const base = ip === 'internet' ? publicUrl.origin : 'http://' + ip + ':' + port;
+      return respond(res, 200, qrSvg(base + '/pad?k=' + code), 'image/svg+xml');
     }
     if (route === '/api/host' && req.method === 'POST' && screenAccess) {
       const data = await readBody(req);
@@ -360,7 +381,7 @@ server.on('upgrade', (req, connection, head) => {
   const reject = status => {
     connection.end('HTTP/1.1 ' + status + '\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
   };
-  if (!allowedHost(req.headers.host) || req.headers.origin !== 'http://' + req.headers.host) {
+  if (!allowedHost(req.headers.host) || req.headers.origin !== requestOrigin(req)) {
     return reject('403 Forbidden');
   }
   const url = new URL(req.url, 'http://' + req.headers.host);

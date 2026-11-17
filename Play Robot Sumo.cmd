@@ -6,7 +6,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-if not exist "node_modules\ws\package.json" (
+if not exist "node_modules\qrcode\package.json" (
   call npm ci --omit=dev --ignore-scripts --no-audit --no-fund
   if errorlevel 1 (
     echo Could not install WebSocket support. Check your internet connection.

@@ -46,6 +46,8 @@ function setting(action, data) {
 
 function updateLinks() {
   const link = setup?.links[networkIndex];
+  set('network-hint', link?.ip === 'internet' ? 'สแกนได้จาก Wi-Fi อื่น หรือ 4G / 5G' : 'ใช้ Wi-Fi เดียวกับโน้ตบุ๊ก');
+  set('share-tv-hint', link?.ip === 'internet' ? 'เปิดลิงก์ผ่านอินเทอร์เน็ตได้ เครื่องหลักต้องเปิดเกมและโหมดออนไลน์ค้างไว้' : 'เปิดลิงก์จากเครื่องที่อยู่บน Wi-Fi เดียวกัน เครื่องหลักต้องเปิดอยู่');
   byId('share-tv').hidden = !online || !link?.tvUrl;
   if (!link) return;
   for (const anchor of document.querySelectorAll('[data-pad-link]')) {
@@ -233,11 +235,12 @@ function draw() {
 }
 
 function applySetup(next) {
-  const preferredNetwork = setup?.links[networkIndex]?.ip ?? location.hostname;
+  const preferredNetwork = setup?.links[networkIndex]?.ip ??
+    (next.links.some(link => link.ip === 'internet') ? 'internet' : location.hostname);
   const priorCatalog = setup?.arenas;
   setup = next;
   const network = byId('network');
-  network.replaceChildren(...setup.links.map((link, i) => new Option(link.ip, i)));
+  network.replaceChildren(...setup.links.map((link, i) => new Option(link.label || link.ip, i)));
   networkIndex = Math.max(0, setup.links.findIndex(link => link.ip === preferredNetwork));
   network.value = String(networkIndex);
   updateLinks();
