@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Robot Sumo · Controller</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/pad-extra.css">
+<script defer src="/pad.js"></script>
+</head>
+<body class="controller side-a">
+<main class="pad">
+  <header class="pad-hud">
+    <div><strong id="pad-player">CONTROLLER</strong><small id="pad-robot"></small></div>
+    <div class="meter"><i id="pad-hp"></i><span id="pad-hp-text">100 / 100 HP</span></div>
+    <div class="pad-header-tools">
+      <small id="pad-connection" role="status">CONNECTING…</small>
+      <button id="pad-fullscreen" type="button">⛶ เต็มจอ</button>
+    </div>
+  </header>
+  <small id="pad-fullscreen-status" role="status" hidden></small>
+  <div class="pad-message" role="status" id="pad-message">กำลังเชื่อมต่อ…</div>
+  <section id="pad-picker" class="pad-picker" aria-label="เลือกหุ่นยนต์" hidden>
+    <div class="pad-choice">
+      <h1>เลือกหุ่นยนต์</h1>
+      <div class="pad-carousel">
+        <div id="pad-swipe" class="pad-swipe" aria-describedby="pad-swipe-hint">
+          <img id="pad-portrait" alt="" draggable="false">
+        </div>
+        <div class="pad-arrows">
+          <button id="pad-previous" type="button" aria-label="หุ่นยนต์ตัวก่อนหน้า">↑</button>
+          <button id="pad-next" type="button" aria-label="หุ่นยนต์ตัวถัดไป">↓</button>
+        </div>
+      </div>
+      <p id="pad-choice-name" class="pad-choice-name" aria-live="polite"></p>
+      <p id="pad-swipe-hint" class="pad-swipe-hint">ปัดขึ้นหรือลงเพื่อเปลี่ยนหุ่น</p>
+    </div>
+    <button id="pad-ready" class="pad-ready" type="button" aria-pressed="false">พร้อม</button>
+  </section>
+  <section id="pad-results" class="pad-results" aria-label="ผลการแข่งขัน" hidden>
+    <button id="pad-replay" type="button" class="primary">เล่นอีกครั้ง</button>
+    <button id="pad-home" type="button">กลับหน้าหลัก</button>
+  </section>
+  <div class="pad-controls">
+    <div class="stick-area"><div id="stick" class="stick" aria-label="จอยควบคุมทิศทาง"><i></i></div><strong>MOVE</strong></div>
+    <div class="pad-actions">
+      <button id="skill" disabled><span aria-hidden="true">ϟ</span>SKILL<small></small></button>
+      <button id="ult" disabled><span aria-hidden="true">✦</span>ULT<small></small></button>
+    </div>
+  </div>
+</main>
+</body>
+</html>

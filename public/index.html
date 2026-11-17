@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robot Sumo</title>
+<link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="./home.css">
+<script>if (location.protocol === 'file:') document.documentElement.classList.add('file-launch');</script>
+<script defer src="./render.js"></script>
+<script defer src="./effects.js"></script>
+<script defer src="./audio.js"></script>
+<script defer src="./screen.js"></script>
+</head>
+<body class="tv">
+<audio data-music loop preload="none" src="./music-home.mp3" hidden></audio>
+<audio data-music loop preload="none" src="./music-match.mp3" hidden></audio>
+<main class="launch-help">
+  <h1>ROBOT SUMO</h1>
+  <p>เปิดเกมจากไฟล์ <strong>Play Robot Sumo.cmd</strong> ในโฟลเดอร์ <strong>robot-sumo</strong> ซึ่งอยู่เหนือโฟลเดอร์ <strong>public</strong> หนึ่งขั้น</p>
+  <p>ถ้าเปิดตัวเกมไว้แล้ว ให้เข้าที่ <a href="http://127.0.0.1:8787/">http://127.0.0.1:8787/</a></p>
+</main>
+<main id="lobby" class="lobby">
+  <header class="mast">
+    <div class="brand"><i aria-hidden="true"></i><h1>ROBOT <span>SUMO</span></h1></div>
+    <div class="utilities">
+      <button id="share-tv" type="button" class="quiet" hidden>แชร์หน้าเกม</button>
+      <button type="button" class="quiet" data-qr-toggle aria-pressed="true">ซ่อน QR</button>
+      <button class="quiet" data-audio aria-pressed="false">เปิดเสียง</button>
+      <button id="practice" class="quiet" aria-pressed="false">⌨ Keyboard</button>
+      <button id="fullscreen" class="quiet" aria-label="เต็มจอ">⛶</button>
+    </div>
+  </header>
+  <div class="layout">
+    <section class="panel fighter side-a default-art" data-player="0">
+      <div class="card-heading"><h2>PLAYER A</h2><span class="status"></span></div>
+      <div class="portrait"><img alt=""></div>
+      <div class="selector"><button data-step="-1" aria-label="หุ่นก่อนหน้า">‹</button><strong></strong><button data-step="1" aria-label="หุ่นถัดไป">›</button></div>
+      <div class="abilities"></div>
+      <div class="pair" hidden><a data-pad-link="0" target="_blank" rel="noopener" aria-label="เปิดจอยผู้เล่น A"><img alt="QR จอยผู้เล่น A"></a><div><strong>CONNECT A</strong><small>สแกน QR ด้วยมือถือหรือ iPad</small></div></div>
+      <div class="pair-cover"><strong>PLAYER A</strong><small>กำลังโหลด QR…</small></div>
+      <p class="keyboard" hidden>W A S D · เดิน<br>F · Skill &nbsp;&nbsp; G · Ult</p>
+    </section>
+    <section class="panel arena-panel default-art">
+      <div class="card-heading"><h2>ARENA</h2><span id="arena-name"></span></div>
+      <div class="arena-preview"><canvas id="preview" aria-label="ตัวอย่างสนาม"></canvas></div>
+      <div id="shapes" class="options shapes" aria-label="เลือกสนาม"></div>
+      <div id="format" class="options format" aria-label="จำนวนรอบ">
+        <button data-best="3">BEST OF 3</button>
+        <button data-best="5">BEST OF 5</button>
+        <button data-best="7">BEST OF 7</button>
+      </div>
+      <button id="start" class="primary start" disabled>START MATCH <span aria-hidden="true">→</span></button>
+      <p id="lobby-status" class="hint" role="status">กำลังโหลดเกม…</p>
+    </section>
+    <section class="panel fighter side-b default-art" data-player="1">
+      <div class="card-heading"><h2>PLAYER B</h2><span class="status"></span></div>
+      <div class="portrait"><img alt=""></div>
+      <div class="selector"><button data-step="-1" aria-label="หุ่นก่อนหน้า">‹</button><strong></strong><button data-step="1" aria-label="หุ่นถัดไป">›</button></div>
+      <div class="abilities"></div>
+      <div class="pair" hidden><a data-pad-link="1" target="_blank" rel="noopener" aria-label="เปิดจอยผู้เล่น B"><img alt="QR จอยผู้เล่น B"></a><div><strong>CONNECT B</strong><small>สแกน QR ด้วยมือถือหรือ iPad</small></div></div>
+      <div class="pair-cover"><strong>PLAYER B</strong><small>กำลังโหลด QR…</small></div>
+      <p class="keyboard" hidden>↑ ← ↓ → · เดิน<br>K · Skill &nbsp;&nbsp; L · Ult</p>
+    </section>
+  </div>
+  <footer class="lobby-footer"><span>ใช้ Wi‑Fi เดียวกับโน้ตบุ๊ก</span><label>เครือข่าย <select id="network"></select></label></footer>
+  <dialog id="share-tv-dialog" class="share-dialog" aria-labelledby="share-tv-title">
+    <h2 id="share-tv-title">เปิดเกมบนอีกเครื่อง</h2>
+    <p>เปิดลิงก์นี้จากคอมที่อยู่บน Wi‑Fi เดียวกัน เครื่องที่รันเกมต้องเปิดอยู่</p>
+    <label for="share-tv-url">ลิงก์หน้าเกม</label>
+    <input id="share-tv-url" readonly>
+    <p class="share-status" id="share-tv-status" role="status">ผู้ที่มีลิงก์นี้สามารถควบคุมแมตช์ได้</p>
+    <form method="dialog">
+      <button type="button" id="copy-tv" class="primary">คัดลอกลิงก์</button>
+      <button>ปิด</button>
+    </form>
+  </dialog>
+</main>
+<main id="match" class="match" hidden>
+  <header class="match-hud">
+    <section class="hud side-a" data-hud="0">
+      <strong>PLAYER A</strong><small class="robot-name"></small><div class="meter"><i></i><span></span></div>
+      <div class="ult-row"><small>ULT</small><div class="meter ult-meter" role="meter" aria-label="พลังท่าไม้ตายผู้เล่น A" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i><span></span></div></div>
+    </section>
+    <section class="round"><small id="round"></small><strong id="score"></strong><small id="best"></small></section>
+    <section class="hud side-b" data-hud="1">
+      <strong>PLAYER B</strong><small class="robot-name"></small><div class="meter"><i></i><span></span></div>
+      <div class="ult-row"><small>ULT</small><div class="meter ult-meter" role="meter" aria-label="พลังท่าไม้ตายผู้เล่น B" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i><span></span></div></div>
+    </section>
+  </header>
+  <div class="battlefield"><canvas id="battle" aria-label="สนามหุ่นยนต์ซูโม่"></canvas>
+  <div id="overlay" class="overlay" hidden>
+    <div class="result">
+      <small id="result-kicker"></small>
+      <h2 id="result-title"></h2>
+      <p id="result-detail"></p>
+      <div id="reconnect-panel" class="reconnect-panel" hidden>
+        <div id="reconnect-qr" class="reconnect-qr" aria-label="QR สำหรับจอยที่หลุด" hidden>
+          <a data-pad-link="0" class="side-a" target="_blank" rel="noopener" aria-label="เปิดจอยผู้เล่น A อีกครั้ง" hidden><img alt="QR จอยผู้เล่น A"><strong>PLAYER A</strong></a>
+          <a data-pad-link="1" class="side-b" target="_blank" rel="noopener" aria-label="เปิดจอยผู้เล่น B อีกครั้ง" hidden><img alt="QR จอยผู้เล่น B"><strong>PLAYER B</strong></a>
+        </div>
+        <div class="reconnect-controls">
+          <button type="button" class="quiet" data-qr-toggle aria-pressed="true">ซ่อน QR</button>
+          <button id="pause-home" class="quiet" type="button">⌂ HOME</button>
+        </div>
+      </div>
+      <div id="result-actions" hidden><button id="replay" class="primary">↻ PLAY AGAIN</button><button id="home">⌂ HOME</button></div>
+    </div>
+  </div>
+  <button class="quiet match-audio" data-audio aria-pressed="false">เปิดเสียง</button>
+  <div id="match-tools" class="match-tools" hidden>
+    <button type="button" class="quiet" data-qr-toggle aria-pressed="true">ซ่อน QR</button>
+    <button id="match-home" type="button" class="quiet">⌂ HOME</button>
+  </div>
+  </div>
+</main>
+</body>
+</html>
