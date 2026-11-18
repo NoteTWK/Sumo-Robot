@@ -220,6 +220,7 @@ function show(snapshot) {
   };
   const settling = state.falling && (state.phase === 'between' || state.phase === 'final');
   const message = settling ? 'RING OUT · ดูจอทีวี' :
+    active && fighter.canEscape ? 'ถูกจับ · หมุนจอยเป็นวงเพื่อหลุด ' + Math.floor(fighter.escapeProgress * 100) + '%' :
     active && fighter.overturned ? 'หุ่นคว่ำ · หมุนจอยเป็นวงเพื่อพลิกกลับ' :
       snapshot.go ? 'GO!' : (active && abilityMessages[fighter.effect]) || messages[state.phase] || '';
   setText('pad-message', message);

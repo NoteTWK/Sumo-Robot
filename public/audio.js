@@ -18,7 +18,7 @@ window.SumoAudio = (() => {
   const windupStages = {
     'lightning-hover': 'lightning-hover', 'spin-blade': 'spin-blade', 'grapple-carry': 'grapple-carry'
   };
-  const ultStarts = new Set(['wedge-surge', 'iron-drill', 'lightning-rise', 'spin-ult', 'grapple-toss', 'flip-overturn']);
+  const ultStarts = new Set(['wedge-surge', 'iron-drill', 'lightning-rise', 'spin-ult', 'grapple-grab', 'flip-overturn']);
 
   function updateButtons() {
     buttons.forEach(button => {

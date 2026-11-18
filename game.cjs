@@ -28,7 +28,7 @@ const ROBOTS = [
   {id: 'spin', name: 'Spin Ring', color: '#b96ff5', speed: 4.3, mass: 0.95, cooldown: 5,
     skill: 'Neon Claws', ult: 'Unstoppable Spin', skillDamage: '15', ultDamage: '0'},
   {id: 'grapple', name: 'Grapple', color: '#4ddbb0', speed: 4, mass: 1.1, cooldown: 8,
-    skill: 'Claw Carry', ult: 'Overhead Throw', skillDamage: '0', ultDamage: '0'},
+    skill: 'Overhead Throw', ult: 'Claw Carry', skillDamage: '0', ultDamage: '0'},
   {id: 'flip', name: 'Flipper', color: '#ff9543', speed: 4.2, mass: 1.05, cooldown: 5,
     skill: 'Scoop', ult: 'Overturn', skillDamage: '0', ultDamage: '0'},
 ];
@@ -107,8 +107,8 @@ const ABILITIES = {
     ult: {effect: 'spin-ult', duration: 5, lead: .3, reach: .25, force: 12, unstoppable: true},
   },
   grapple: {
-    skill: {effect: 'grapple-grab', duration: .42, reach: .2, front: true, hold: 3},
-    ult: {effect: 'grapple-toss', duration: .46, lead: .35, reach: .24, front: true, hold: .62, toss: true},
+    skill: {effect: 'grapple-toss', duration: .46, reach: .24, front: true, hold: .62, toss: true},
+    ult: {effect: 'grapple-grab', duration: .42, lead: .35, reach: .2, front: true, hold: 3, escapable: true},
   },
   flip: {
     skill: {effect: 'flip-scoop', duration: .37, reach: .17, front: true, force: 2.2, lift: .36, flipChance: .25},
@@ -124,6 +124,25 @@ function approach(value, target, maxDelta) {
 
 function angleDifference(from, to) {
   return Math.atan2(Math.sin(to - from), Math.cos(to - from));
+}
+
+function resetGesture(fighter) {
+  fighter.gestureAngle = null;
+  fighter.gestureTurn = 0;
+}
+
+function joystickTurn(fighter, x, y) {
+  if (Math.hypot(x, y) < .55) {
+    resetGesture(fighter);
+    return 0;
+  }
+  const angle = Math.atan2(y, x);
+  if (fighter.gestureAngle !== null) {
+    const step = angleDifference(fighter.gestureAngle, angle);
+    fighter.gestureTurn = Math.abs(step) > 1.8 ? 0 : fighter.gestureTurn + step;
+  }
+  fighter.gestureAngle = angle;
+  return Math.abs(fighter.gestureTurn) >= TAU * .85 ? Math.sign(fighter.gestureTurn) : 0;
 }
 
 function footprint(fighter) {
@@ -452,6 +471,7 @@ class Game {
     for (const fighter of this.fighters) {
       fighter.dx = 0;
       fighter.dy = 0;
+      resetGesture(fighter);
     }
   }
 
@@ -463,23 +483,20 @@ class Game {
     const length = Math.max(1, Math.hypot(x, y));
     fighter.dx = x / length;
     fighter.dy = y / length;
-    if (fighter.overturned && !fighter.recovery) {
-      if (Math.hypot(x, y) < .55) {
-        fighter.gestureAngle = null;
-        fighter.gestureTurn = 0;
-      } else {
-        const angle = Math.atan2(y, x);
-        if (fighter.gestureAngle !== null) {
-          const step = angleDifference(fighter.gestureAngle, angle);
-          fighter.gestureTurn = Math.abs(step) > 1.8 ? 0 : fighter.gestureTurn + step;
-          if (Math.abs(fighter.gestureTurn) >= TAU * .85) {
-            fighter.recovery = .45;
-            fighter.recoveryDirection = Math.sign(fighter.gestureTurn);
-          }
-        }
-        fighter.gestureAngle = angle;
+    const captor = this.fighters[1 - index];
+    if (fighter.carried && captor.grip?.escapable) {
+      if (joystickTurn(fighter, x, y)) {
+        this.releaseGrip(captor, fighter, false);
+        fighter.dx = fighter.dy = 0;
+        return true;
       }
-    }
+    } else if (fighter.overturned && !fighter.recovery) {
+      const direction = joystickTurn(fighter, x, y);
+      if (direction) {
+        fighter.recovery = .45;
+        fighter.recoveryDirection = direction;
+      }
+    } else resetGesture(fighter);
     if (command?.ult === true && this.canUse(fighter, 'ult')) this.activate(fighter, 'ult');
     if (command?.skill === true && this.canUse(fighter, 'skill')) this.activate(fighter, 'skill');
     return true;
@@ -740,6 +757,7 @@ class Game {
     opponent.carried = false;
     opponent.carriedHeight = opponent.carriedVertical = 0;
     opponent.vx = opponent.vy = 0;
+    resetGesture(opponent);
     if (grip.toss && completed) land(opponent, grip.height);
     else if (height > 0) setLiftArc(opponent, grip.toss ? grip.height : height, height, true);
   }
@@ -878,9 +896,11 @@ class Game {
       opponent.carriedHeight = opponent.carriedVertical = 0;
       opponent.action = null;
       opponent.boostRemaining = 0;
+      resetGesture(opponent);
       opponent.lift = opponent.liftHeight = opponent.peakHeight = opponent.flipOnLanding = 0;
       opponent.vx = opponent.vy = opponent.kx = opponent.ky = 0;
       fighter.grip = {age: 0, duration: ability.hold, toss: Boolean(ability.toss),
+        escapable: Boolean(ability.escapable),
         startX: opponent.x, startY: opponent.y, targetHeading: opponent.angle - fighter.angle,
         height: (ability.toss ? 1.3 : .3) / ROBOTS[opponent.robotId].mass};
     }
@@ -924,6 +944,8 @@ class Game {
           cooldown: fighter.cooldown, ultCharge: clamp((MAX_HP - fighter.hp) / (MAX_HP - ULT_HP), 0, 1),
           skillReady: this.canUse(fighter, 'skill'), ultReady: this.canUse(fighter, 'ult'),
           ultUsed: fighter.ultUsed, effect, effectProgress, carried: fighter.carried,
+          canEscape: fighter.carried && Boolean(this.fighters.find(other => other !== fighter)?.grip?.escapable),
+          escapeProgress: fighter.carried ? clamp(Math.abs(fighter.gestureTurn) / (TAU * .85), 0, 1) : 0,
           boosting: fighter.boostRemaining > 0,
           overturned: fighter.overturned,
           landings: fighter.landings,

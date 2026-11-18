@@ -110,3 +110,15 @@ test('holding the joystick while pressing ultimate and skill keeps movement and 
   assert.equal(skill.action.kind,'skill');assert.equal(skill.x,1);
   assert.ok(skill.action.seq>ult.action.seq);
 });
+
+test('the grabbed player sees escape progress and can still send joystick input',()=>{
+  const b=browser(),socket=b.sockets[0];socket.open();
+  socket.message({...b.state,fighter:{...b.state.fighter,carried:true,canEscape:true,escapeProgress:.6,skillReady:false,ultReady:false}});
+  assert.match(b.element('pad-message').textContent,/หมุนจอย.*60%/);
+  assert.equal(b.element('skill').disabled,true);
+  b.element('stick').emit('pointerdown',{pointerId:1,clientX:82,clientY:50,preventDefault(){}});
+  b.advance(100);
+  assert.equal(socket.sent.at(-1).x,1,'being grabbed does not disable the escape joystick');
+  socket.message({...b.state,fighter:{...b.state.fighter,carried:false,canEscape:false,escapeProgress:0}});
+  assert.doesNotMatch(b.element('pad-message').textContent,/ถูกจับ/);
+});
