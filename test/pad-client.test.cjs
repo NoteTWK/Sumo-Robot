@@ -93,3 +93,20 @@ test('hiding the mobile page releases control and foregrounding reconnects only 
   assert.ok(next.sent[0].packet>first.sent.at(-1).packet);
   assert.equal(next.sent[0].x,0);
 });
+
+test('holding the joystick while pressing ultimate and skill keeps movement and both actions',()=>{
+  const b=browser(),socket=b.sockets[0];socket.open();
+  const ready={...b.state,fighter:{...b.state.fighter,ultReady:true}};
+  socket.message(ready);
+  b.element('stick').emit('pointerdown',{pointerId:1,clientX:82,clientY:50,preventDefault(){}});
+  b.element('ult').emit('pointerdown',{pointerId:2,preventDefault(){}});
+  b.element('skill').emit('pointerdown',{pointerId:3,preventDefault(){}});
+  b.advance(1);
+  const ult=socket.sent.at(-1);
+  assert.equal(ult.action.kind,'ult');assert.equal(ult.x,1);
+  socket.message({...ready,ack:ult.action.seq,fighter:{...ready.fighter,effect:'lightning-hover',ultReady:false}});
+  b.advance(32);
+  const skill=socket.sent.at(-1);
+  assert.equal(skill.action.kind,'skill');assert.equal(skill.x,1);
+  assert.ok(skill.action.seq>ult.action.seq);
+});

@@ -163,10 +163,11 @@ window.SumoAudio = (() => {
           cue('ult-ready', { delay: .13 });
         }
         if (fighter.overturned && !before.overturned) cue('ability-stage', { stage: 'overturn' });
+        if (robot === 'lightning' && fighter.boosting && !before.boosting) cue('skill', { robot });
         if (fighter.effect && fighter.effect !== before.effect) {
           const stage = windupStages[fighter.effect];
           if (stage) cue('ability-stage', { stage });
-          else if (fighter.effect !== 'lightning-slam') {
+          else if (fighter.effect !== 'lightning-slam' && fighter.effect !== 'lightning-boost') {
             const event = fighter.effect === 'ult-prep' ? 'ult-warn' :
               before.effect === 'ult-prep' || ultStarts.has(fighter.effect) ? 'ult' : 'skill';
             cue(event, { robot });

@@ -314,7 +314,7 @@ function createFighter(index, robotId) {
     robotId,
     x: index === 0 ? -2.5 : 2.5, y: 0, angle: index === 0 ? 0 : Math.PI,
     vx: 0, vy: 0, kx: 0, ky: 0, dx: 0, dy: 0,
-    hp: MAX_HP, cooldown: 0, ultUsed: false, action: null,
+    hp: MAX_HP, cooldown: 0, ultUsed: false, action: null, boostRemaining: 0,
     grip: null, carried: false, carriedHeight: 0, carriedVertical: 0,
     lift: 0, liftDuration: 0, liftHeight: 0,
     peakHeight: 0, roll: 0, overturned: false, flipOnLanding: 0, landings: 0,
@@ -364,12 +364,17 @@ function land(fighter, height, direction = 0) {
   fighter.overturned = Boolean(direction);
   fighter.roll = direction * Math.PI;
   fighter.flipOnLanding = direction;
-  if (fighter.overturned) fighter.action = null;
+  if (fighter.overturned) {
+    fighter.action = null;
+    fighter.boostRemaining = 0;
+  }
 }
 
 function nextAbilityEffect(fighter) {
   const action = fighter.action;
-  if (!action) return {effect: null, progress: 0};
+  if (!action) return fighter.boostRemaining > 0 ?
+    {effect: 'lightning-boost', progress: 1 - fighter.boostRemaining / ABILITIES.lightning.skill.duration} :
+    {effect: null, progress: 0};
   const {ability, age} = action;
   if (age < 0) return {effect: 'ult-prep', progress: clamp(1 + age / ability.lead, 0, 1)};
   if (fighter.grip) {
@@ -476,19 +481,29 @@ class Game {
       }
     }
     if (command?.ult === true && this.canUse(fighter, 'ult')) this.activate(fighter, 'ult');
-    else if (command?.skill === true && this.canUse(fighter, 'skill')) this.activate(fighter, 'skill');
+    if (command?.skill === true && this.canUse(fighter, 'skill')) this.activate(fighter, 'skill');
     return true;
   }
 
   canUse(fighter, type) {
-    if (this.phase !== 'live' || fighter.action || fighter.carried || fighter.overturned || fighter.recovery ||
+    const concurrentBoost = ROBOTS[fighter.robotId].id === 'lightning' && type === 'skill' &&
+      fighter.action?.ability.jump;
+    if (this.phase !== 'live' || (fighter.action && !concurrentBoost) || fighter.carried || fighter.overturned || fighter.recovery ||
         fighter.lift > 0) return false;
-    return type === 'ult' ? fighter.hp <= ULT_HP && !fighter.ultUsed : fighter.cooldown <= 0;
+    return type === 'ult' ? fighter.hp <= ULT_HP && !fighter.ultUsed :
+      fighter.cooldown <= 0 && fighter.boostRemaining <= 0;
   }
 
   activate(fighter, type) {
     const robot = ROBOTS[fighter.robotId];
     const ability = ABILITIES[robot.id][type];
+    if (ability.effect === 'lightning-boost') {
+      fighter.boostRemaining = ability.duration;
+      fighter.vx *= ability.speed;
+      fighter.vy *= ability.speed;
+      fighter.cooldown = robot.cooldown;
+      return;
+    }
     fighter.action = {
       ability, age: -(ability.lead ?? 0), previousAge: 0, heading: fighter.angle,
       hit: false, nextPush: 0, spikeContact: false,
@@ -593,6 +608,13 @@ class Game {
 
   advanceFighter(fighter, dt) {
     fighter.cooldown = Math.max(0, fighter.cooldown - dt);
+    const wasBoosting = fighter.boostRemaining > 0;
+    fighter.boostRemaining = Math.max(0, fighter.boostRemaining - dt);
+    if (wasBoosting && fighter.boostRemaining === 0) {
+      const ratio = Math.max(1, Math.hypot(fighter.vx, fighter.vy) / ROBOTS[fighter.robotId].speed);
+      fighter.vx /= ratio;
+      fighter.vy /= ratio;
+    }
     if (fighter.lift > 0) {
       fighter.lift = Math.max(0, fighter.lift - dt);
       if (fighter.lift === 0) {
@@ -614,7 +636,7 @@ class Game {
     }
 
     const active = activeAction(fighter);
-    const normalSpeed = ROBOTS[fighter.robotId].speed * (active?.ability.speed ?? 1);
+    const normalSpeed = ROBOTS[fighter.robotId].speed * (fighter.boostRemaining > 0 ? ABILITIES.lightning.skill.speed : 1);
     const steering = fighter.lift > 0 ? 0.3 : 1;
     const decay = Math.exp(-6 * dt);
     fighter.kx *= unstoppable(fighter) ? 0 : decay;
@@ -627,15 +649,12 @@ class Game {
       return;
     }
 
-    if (fighter.carried || active?.ability.jump || fighter.grip?.toss) {
+    if (fighter.carried || fighter.grip?.toss) {
       fighter.vx = 0;
       fighter.vy = 0;
-      if (active?.ability.jump) {
-        fighter.angle = active.heading;
-        fighter.kx = fighter.ky = 0;
-      }
       return;
     }
+    if (active?.ability.jump) fighter.kx = fighter.ky = 0;
 
     const driving = active?.ability.drive;
     const stick = Math.hypot(fighter.dx, fighter.dy);
@@ -647,6 +666,7 @@ class Game {
         1 - .62 * clamp(Math.hypot(fighter.vx, fighter.vy) / normalSpeed, 0, 1) : 1) * dt;
       fighter.angle += clamp(angleDifference(fighter.angle, target), -turning, turning);
     }
+    if (active?.ability.jump) active.heading = fighter.angle;
     if (driving) {
       const driveSeconds = clamp(active.age, 0, active.ability.duration) -
         clamp(active.previousAge, 0, active.ability.duration);
@@ -857,6 +877,7 @@ class Game {
       opponent.carried = true;
       opponent.carriedHeight = opponent.carriedVertical = 0;
       opponent.action = null;
+      opponent.boostRemaining = 0;
       opponent.lift = opponent.liftHeight = opponent.peakHeight = opponent.flipOnLanding = 0;
       opponent.vx = opponent.vy = opponent.kx = opponent.ky = 0;
       fighter.grip = {age: 0, duration: ability.hold, toss: Boolean(ability.toss),
@@ -903,6 +924,7 @@ class Game {
           cooldown: fighter.cooldown, ultCharge: clamp((MAX_HP - fighter.hp) / (MAX_HP - ULT_HP), 0, 1),
           skillReady: this.canUse(fighter, 'skill'), ultReady: this.canUse(fighter, 'ult'),
           ultUsed: fighter.ultUsed, effect, effectProgress, carried: fighter.carried,
+          boosting: fighter.boostRemaining > 0,
           overturned: fighter.overturned,
           landings: fighter.landings,
           roll: fighter.recovery ? fighter.roll + fighter.recoveryDirection * Math.PI * (1 - fighter.recovery / .45) :

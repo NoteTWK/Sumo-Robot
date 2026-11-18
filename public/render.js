@@ -856,13 +856,16 @@
 
   function abilityFx(ctx, project, fighter, s, now, points) {
     const { effect, effectProgress: progress = 0, height = 0 } = fighter;
-    if (fighter.ringOut || (!effect && !fighter.carried)) return;
+    if (fighter.ringOut || (!effect && !fighter.carried && !fighter.boosting)) return;
     const at = localProject(project, fighter.x, fighter.y, fighter.angle);
     const [x, y] = at([0, 0, .009]);
     ctx.save();
     if (fighter.carried) {
       const center = at([0, 0, height * .7]);
       arc(ctx, ...center, s * .75, 0, Math.PI * 2, Math.max(1.6, s * .027), "#76ffd4aa");
+    }
+    if (fighter.boosting && effect !== "lightning-boost") {
+      thrust(ctx, ([u, v, z]) => at([u, v, height + z]), s, "#ffc459", true, now, 1.45);
     }
     switch (effect) {
       case "ult-prep": {
@@ -891,7 +894,7 @@
         }
         break;
       case "lightning-boost":
-        thrust(ctx, at, s, "#ffc459", true, now, 1.45);
+        thrust(ctx, ([u, v, z]) => at([u, v, height + z]), s, "#ffc459", true, now, 1.45);
         break;
       case "lightning-rise":
       case "lightning-hover":
@@ -911,7 +914,7 @@
           const streak = [[-.18, 0, height * .99], [.07, 0, height * .76], [-.08, 0, height * .67],
             [.12, 0, height * .43], [-.02, 0, height * .29], [.14, 0, .025]].map(at);
           stroke(ctx, streak, "#ffdf876e", Math.max(2, s * .035));
-          if (effect === "lightning-rise") {
+          if (effect === "lightning-rise" && !fighter.boosting) {
             thrust(ctx, ([u, v, z]) => at([u, v, height + z]), s, "#ffd273", true, now, .72);
           }
         }

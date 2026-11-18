@@ -22,7 +22,7 @@ const resultActions = byId('pad-results');
 const arenaAction = kind => kind === 'skill' || kind === 'ult';
 const actionLifetime = kind => arenaAction(kind) ? 350 : 1200;
 const abilityMessages = {
-  'lightning-hover': 'ลอยชาร์จ · เตรียมกระแทกพื้น',
+  'lightning-hover': 'ลอยชาร์จ · ใช้จอยเลือกจุดกระแทก',
   'spin-charge': 'กำลังชาร์จ · หลบการชน',
   'spin-blade': 'ใบมีดพร้อม · เข้าชน',
   'grapple-carry': 'จับสำเร็จ · ใช้จอยพาหุ่นไปยังตำแหน่งที่ต้องการ'
