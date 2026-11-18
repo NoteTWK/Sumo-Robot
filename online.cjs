@@ -40,12 +40,37 @@ async function cloudflared() {
 }
 
 async function main() {
-  const executable = await cloudflared();
   const port = process.env.PORT || '8788';
+  const localUrl = 'http://127.0.0.1:' + port;
+  console.log('Starting Robot Sumo Online...');
   // Reserve a separate port so online mode cannot accidentally expose an older local game.
   const probe = require('node:net').createServer();
-  await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(Number(port), '0.0.0.0', resolve); });
+  try {
+    await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(Number(port), '0.0.0.0', resolve); });
+  } catch (error) {
+    if (error.code !== 'EADDRINUSE') throw error;
+    let existing;
+    try {
+      const response = await fetch(localUrl + '/api/setup', { signal: AbortSignal.timeout(2000) });
+      if (response.ok) existing = await response.json();
+    } catch {}
+    const isGame = existing?.robots?.length === 6 && Array.isArray(existing?.arenas) &&
+      typeof existing?.session === 'string';
+    if (!isGame || !existing.links?.some(link => link.ip === 'internet')) {
+      throw Error('Port ' + port + ' is used by another program. Close that program or choose another PORT.');
+    }
+    console.log('Robot Sumo Online is already running. Opening ' + localUrl);
+    if (process.argv.includes('--open')) {
+      const browser = spawn('rundll32.exe', ['url.dll,FileProtocolHandler', localUrl],
+        { windowsHide: true, stdio: 'ignore' });
+      browser.on('error', () => console.log('Open ' + localUrl + ' in your browser.'));
+      browser.unref();
+    }
+    return;
+  }
   await new Promise(resolve => probe.close(resolve));
+  const executable = await cloudflared();
+  console.log('Connecting to the internet. Please wait...');
   const tunnel = spawn(executable, ['tunnel', '--no-autoupdate', '--protocol', 'http2', '--url', 'http://127.0.0.1:' + port], {
     cwd: __dirname, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
   });
