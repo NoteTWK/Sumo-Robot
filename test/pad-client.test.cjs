@@ -122,3 +122,11 @@ test('the grabbed player sees escape progress and can still send joystick input'
   socket.message({...b.state,fighter:{...b.state.fighter,carried:false,canEscape:false,escapeProgress:0}});
   assert.doesNotMatch(b.element('pad-message').textContent,/ถูกจับ/);
 });
+
+test('Spin Ring controller displays the current blade charge and damage',()=>{
+  const b=browser(),socket=b.sockets[0];socket.open();
+  socket.message({...b.state,fighter:{...b.state.fighter,effect:'spin-charge',bladeCharge:.5,bladeDamage:10.5}});
+  assert.match(b.element('pad-message').textContent,/50%.*10\.5.*1\.5/);
+  socket.message({...b.state,fighter:{...b.state.fighter,effect:'spin-blade',bladeCharge:1,bladeDamage:20}});
+  assert.match(b.element('pad-message').textContent,/100%.*20/);
+});

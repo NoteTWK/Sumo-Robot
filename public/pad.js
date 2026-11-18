@@ -23,7 +23,7 @@ const arenaAction = kind => kind === 'skill' || kind === 'ult';
 const actionLifetime = kind => arenaAction(kind) ? 350 : 1200;
 const abilityMessages = {
   'lightning-hover': 'ลอยชาร์จ · ใช้จอยเลือกจุดกระแทก',
-  'spin-charge': 'กำลังชาร์จ · หลบการชน',
+  'spin-charge': 'กำลังชาร์จใบมีด · ความเร็ว ×1.5',
   'spin-blade': 'ใบมีดพร้อม · เข้าชน',
   'grapple-carry': 'จับสำเร็จ · ใช้จอยพาหุ่นไปยังตำแหน่งที่ต้องการ'
 };
@@ -222,6 +222,8 @@ function show(snapshot) {
   const message = settling ? 'RING OUT · ดูจอทีวี' :
     active && fighter.canEscape ? 'ถูกจับ · หมุนจอยเป็นวงเพื่อหลุด ' + Math.floor(fighter.escapeProgress * 100) + '%' :
     active && fighter.overturned ? 'หุ่นคว่ำ · หมุนจอยเป็นวงเพื่อพลิกกลับ' :
+    active && (fighter.effect === 'spin-charge' || fighter.effect === 'spin-blade') ?
+      'ใบมีด ' + Math.round(fighter.bladeCharge * 100) + '% · ดาเมจ ' + Math.round(fighter.bladeDamage * 100) / 100 + ' · ความเร็ว ×1.5' :
       snapshot.go ? 'GO!' : (active && abilityMessages[fighter.effect]) || messages[state.phase] || '';
   setText('pad-message', message);
   firstConnection = false;

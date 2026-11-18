@@ -275,8 +275,10 @@
 
   function riggedMesh(id, effect) {
     const base = model(id);
-    if (!(id === "iron" && effect === "iron-spikes") && !(id === "spin" && effect === "spin-blade")) return base;
-    if (attachments.has(effect)) return attachments.get(effect);
+    const spinBlade = id === "spin" && (effect === "spin-charge" || effect === "spin-blade");
+    if (!(id === "iron" && effect === "iron-spikes") && !spinBlade) return base;
+    const attachment = spinBlade ? "spin-blade" : effect;
+    if (attachments.has(attachment)) return attachments.get(attachment);
     const added = [];
     if (effect === "iron-spikes") {
       for (const y of [-.36, -.12, .12, .36]) {
@@ -286,6 +288,7 @@
       for (const face of added) face.part = "spikes";
     } else {
       for (let i = 0; i < 5; i++) {
+        const first = added.length;
         const angle = i * Math.PI * 2 / 5;
         const cos = Math.cos(angle), sin = Math.sin(angle);
         const blade = (outline, color) => {
@@ -294,17 +297,32 @@
         };
         blade([[.61, -.14], [.75, -.125], [.825, .015], [.70, .035]], "#4df2f8");
         blade([[.70, .035], [.825, .015], [.824, .127], [.765, .105]], "#90ffff");
+        for (let face = first; face < added.length; face++) added[face].part = "blade-" + i;
       }
     }
     const mesh = [...base, ...added];
-    attachments.set(effect, mesh);
+    attachments.set(attachment, mesh);
     return mesh;
   }
 
-  function partTransforms(effect, progress) {
+  function partTransforms(effect, progress, bladeCharge) {
     if (effect === "iron-spikes") {
       const travel = Math.min(1, progress * 36, (1 - progress) * 29);
       return { spikes: ([x, y, z], point) => [x - (point ? (1 - travel) * .27 : 0), y, z] };
+    }
+    if (effect === "spin-charge" || effect === "spin-blade") {
+      const charge = Math.max(0, Math.min(1, bladeCharge ?? (effect === "spin-charge" ? progress : 1)));
+      // Slide each blade out from beneath the outer chassis. The furthest tooth
+      // stays at the gameplay hull radius (.7) plus its growing .2-unit reach.
+      const radius = (.7 + .2 * charge) / 1.08;
+      const retract = .824 - Math.sqrt(radius * radius - .127 * .127);
+      const parts = {};
+      for (let i = 0; i < 5; i++) {
+        const angle = i * Math.PI * 2 / 5;
+        const dx = Math.cos(angle) * retract, dy = Math.sin(angle) * retract;
+        parts["blade-" + i] = ([x, y, z], point) => point ? [x - dx, y - dy, z] : [x, y, z];
+      }
+      return parts;
     }
     if (effect === "flip-scoop" || effect === "flip-overturn") {
       const snap = Math.min(1, progress * 4);
@@ -364,7 +382,7 @@
       return [worldX + outwardX * shift, worldY + outwardY * shift, z * tiltCos - towardEdge * tiltSin];
     } : orient;
     const mesh = riggedMesh(id, effect);
-    const parts = partTransforms(effect, effectProgress);
+    const parts = partTransforms(effect, effectProgress, data.bladeCharge);
     let base = height - fall;
     if ((ringOut && base < FLOOR_LEVEL + .95) || (!ringOut && roll !== 0)) {
       let lowest = Infinity;
@@ -921,9 +939,20 @@
         break;
       }
       case "spin-charge": {
+        const charge = Math.max(0, Math.min(1, fighter.bladeCharge ?? progress));
         const width = Math.max(1.6, s * .032);
-        arc(ctx, x, y, s * .83, 0, Math.PI * 2, width, "#792ec699");
-        arc(ctx, x, y, s * .83, -Math.PI / 2, Math.PI * (2 * progress - .5), width * 1.4, "#dd9dff");
+        const radius = s * (.7 + .2 * charge);
+        const center = at([0, 0, .25]);
+        arc(ctx, ...center, radius, 0, Math.PI * 2, width, "#792ec699");
+        arc(ctx, ...center, radius, -Math.PI / 2, Math.PI * (2 * charge - .5), width * 1.4, "#dd9dff");
+        if (charge > 0) {
+          const phase = fighter.angle + now / 180;
+          for (let i = 0; i < 3; i++) {
+            const spin = phase + i * Math.PI * 2 / 3;
+            arc(ctx, ...center, radius, spin, spin + .72 * charge,
+              Math.max(1.2, s * (.012 + .022 * charge)), "#71fcf7");
+          }
+        }
         break;
       }
       case "spin-blade":
@@ -1005,6 +1034,10 @@
       if (fighter.effect && fighter.effect === prior.effect) {
         const start = prior.effectProgress || 0;
         next.effectProgress = start + ((fighter.effectProgress || 0) - start) * mix;
+      }
+      if (Number.isFinite(fighter.bladeCharge)) {
+        const start = Number.isFinite(prior.bladeCharge) ? prior.bladeCharge : fighter.bladeCharge;
+        next.bladeCharge = start + (fighter.bladeCharge - start) * mix;
       }
       return next;
     });

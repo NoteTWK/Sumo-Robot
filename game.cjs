@@ -16,7 +16,7 @@ const LIGHTNING_RISE = .36;
 const LIGHTNING_HOVER = 3;
 const LIGHTNING_DESCENT = .31;
 const LIGHTNING_HEIGHT = 3;
-const SPIN_CHARGE = 5;
+const SPIN_CHARGE = 4;
 
 const ROBOTS = [
   {id: 'wedge', name: 'Red Wedge', color: '#f13d3a', speed: 4.6, mass: 1, cooldown: 5,
@@ -26,7 +26,7 @@ const ROBOTS = [
   {id: 'lightning', name: 'Lightning', color: '#f6c641', speed: 5.4, mass: 0.8, cooldown: 7,
     skill: 'Double Speed', ult: 'Thunder Slam', skillDamage: '0', ultDamage: '20'},
   {id: 'spin', name: 'Spin Ring', color: '#b96ff5', speed: 4.3, mass: 0.95, cooldown: 5,
-    skill: 'Neon Claws', ult: 'Unstoppable Spin', skillDamage: '15', ultDamage: '0'},
+    skill: 'Neon Claws', ult: 'Unstoppable Spin', skillDamage: '1–20', ultDamage: '0'},
   {id: 'grapple', name: 'Grapple', color: '#4ddbb0', speed: 4, mass: 1.1, cooldown: 8,
     skill: 'Overhead Throw', ult: 'Claw Carry', skillDamage: '0', ultDamage: '0'},
   {id: 'flip', name: 'Flipper', color: '#ff9543', speed: 4.2, mass: 1.05, cooldown: 5,
@@ -103,7 +103,7 @@ const ABILITIES = {
     ult: {effect: 'lightning-slam', duration: LIGHTNING_RISE + LIGHTNING_HOVER + LIGHTNING_DESCENT, lead: .3, jump: true, damage: 20},
   },
   spin: {
-    skill: {effect: 'spin-charge', duration: SPIN_CHARGE + 5, reach: .2, damage: 15},
+    skill: {effect: 'spin-charge', duration: SPIN_CHARGE + 5, reach: .2, damage: 20, speed: 1.5},
     ult: {effect: 'spin-ult', duration: 5, lead: .3, reach: .25, force: 12, unstoppable: true},
   },
   grapple: {
@@ -403,7 +403,7 @@ function nextAbilityEffect(fighter) {
   const jump = jumpState(action);
   if (jump) return jump;
   if (ability.effect === 'spin-charge') {
-    return age < SPIN_CHARGE ? {effect: 'spin-charge', progress: age / SPIN_CHARGE} :
+    return age + 1e-8 < SPIN_CHARGE ? {effect: 'spin-charge', progress: age / SPIN_CHARGE} :
       {effect: 'spin-blade', progress: clamp((age - SPIN_CHARGE) / 5, 0, 1)};
   }
   return {effect: ability.effect, progress: clamp(age / ability.duration, 0, 1)};
@@ -411,6 +411,17 @@ function nextAbilityEffect(fighter) {
 
 function nextAbilityEffectForHit(action) {
   return action.ability.effect === 'spin-charge' ? 'spin-blade' : action.ability.effect;
+}
+
+function bladeCharge(action) {
+  if (action?.ability.effect !== 'spin-charge') return 0;
+  return action.age + 1e-8 >= SPIN_CHARGE ? 1 : clamp(action.age / SPIN_CHARGE, 0, 1);
+}
+
+function hitDamage(action) {
+  if (!action) return 0;
+  return action.ability.effect === 'spin-charge' ? 1 + (action.ability.damage - 1) * bladeCharge(action) :
+    action.ability.damage ?? 0;
 }
 
 class Game {
@@ -653,7 +664,8 @@ class Game {
     }
 
     const active = activeAction(fighter);
-    const normalSpeed = ROBOTS[fighter.robotId].speed * (fighter.boostRemaining > 0 ? ABILITIES.lightning.skill.speed : 1);
+    const normalSpeed = ROBOTS[fighter.robotId].speed *
+      (fighter.boostRemaining > 0 ? ABILITIES.lightning.skill.speed : active?.ability.speed ?? 1);
     const steering = fighter.lift > 0 ? 0.3 : 1;
     const decay = Math.exp(-6 * dt);
     fighter.kx *= unstoppable(fighter) ? 0 : decay;
@@ -783,8 +795,9 @@ class Game {
     const closing = Math.max(0, av - bv);
     const aHit = this.findHit(a, engage ? gap : Infinity, aimX, aimY);
     const bHit = this.findHit(b, engage ? gap : Infinity, -aimX, -aimY);
+    const aDamage = hitDamage(aHit), bDamage = hitDamage(bHit);
     const damage = [0, 0];
-    const stopNormalDamage = aHit?.ability.damage || bHit?.ability.damage || aSlam || bSlam;
+    const stopNormalDamage = aDamage || bDamage || aSlam || bSlam;
 
     if (contact) {
       for (const fighter of [a, b]) this.interruptSpinCharge(fighter);
@@ -831,11 +844,11 @@ class Game {
     const mutualGrab = Boolean(aHit?.ability.hold && bHit?.ability.hold);
     if (aHit) {
       this.applyHit(a, b, aHit, aimX, aimY, mutualGrab);
-      damage[1] += aHit.ability.damage ?? 0;
+      damage[1] += aDamage;
     }
     if (bHit) {
       this.applyHit(b, a, bHit, -aimX, -aimY, mutualGrab);
-      damage[0] += bHit.ability.damage ?? 0;
+      damage[0] += bDamage;
     }
     const damagingImpact = Boolean(damage[0] || damage[1]);
     if (damagingImpact) {
@@ -868,7 +881,7 @@ class Game {
 
   interruptSpinCharge(fighter) {
     const action = activeAction(fighter);
-    if (action?.ability.effect === 'spin-charge' && action.previousAge < SPIN_CHARGE) action.ended = true;
+    if (action?.ability.effect === 'spin-charge' && action.age + 1e-8 < SPIN_CHARGE) action.ended = true;
   }
 
   findHit(fighter, gap, nx, ny) {
@@ -877,10 +890,10 @@ class Game {
     const ability = action.ability;
     if (!ability.contact && ability.reach === undefined) return null;
     if (ability.effect === 'iron-spikes' && gap > ability.reach + .045) action.spikeContact = false;
-    if (gap > (ability.reach ?? 0)) return null;
+    const reach = ability.effect === 'spin-charge' ? ability.reach * bladeCharge(action) : ability.reach ?? 0;
+    if (gap > reach) return null;
     if (ability.front && nx * Math.cos(fighter.angle) + ny * Math.sin(fighter.angle) < .58) return null;
     if (ability.effect === 'iron-spikes' && action.spikeContact) return null;
-    if (ability.effect === 'spin-charge' && action.previousAge < SPIN_CHARGE) return null;
     if (ability.effect === 'spin-ult' && action.age < action.nextPush) return null;
     return action;
   }
@@ -947,6 +960,9 @@ class Game {
           canEscape: fighter.carried && Boolean(this.fighters.find(other => other !== fighter)?.grip?.escapable),
           escapeProgress: fighter.carried ? clamp(Math.abs(fighter.gestureTurn) / (TAU * .85), 0, 1) : 0,
           boosting: fighter.boostRemaining > 0,
+          bladeCharge: bladeCharge(action),
+          bladeDamage: action?.ability.effect === 'spin-charge' ? hitDamage(action) : 0,
+          bladeReach: action?.ability.effect === 'spin-charge' ? action.ability.reach * bladeCharge(action) : 0,
           overturned: fighter.overturned,
           landings: fighter.landings,
           roll: fighter.recovery ? fighter.roll + fighter.recoveryDirection * Math.PI * (1 - fighter.recovery / .45) :
