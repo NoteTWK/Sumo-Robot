@@ -12,12 +12,16 @@ const { qrSvg } = require('./qr.cjs');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const port = Number(process.env.PORT || 8787);
-const publicUrl = process.env.PUBLIC_URL ? new URL(process.env.PUBLIC_URL) : null;
+let publicUrl = process.env.PUBLIC_URL ? new URL(process.env.PUBLIC_URL) : null;
 if (publicUrl && (publicUrl.protocol !== 'https:' || publicUrl.username || publicUrl.password ||
     publicUrl.pathname !== '/' || publicUrl.search || publicUrl.hash)) {
   throw new Error('PUBLIC_URL must be an HTTPS origin, for example https://game.example.com');
 }
 const publicDir = path.join(__dirname, 'public');
+const onlineControlKey = process.env.ONLINE_CONTROL_KEY;
+const onlineProbe = process.env.ONLINE_PROBE_TOKEN || randomBytes(16).toString('hex');
+let internetReady = Boolean(publicUrl) && !onlineControlKey;
+let linkVersion = 0;
 const game = new Game();
 const codes = [0, 1].map(() => randomBytes(8).toString('hex'));
 const session = randomBytes(8).toString('hex');
@@ -43,7 +47,7 @@ function networkHosts() {
 
 function publish() {
   const state = game.snapshot();
-  const data = 'data: ' + JSON.stringify({ ...state, practice, ready, session }) + '\n\n';
+  const data = 'data: ' + JSON.stringify({ ...state, practice, ready, session, linkVersion }) + '\n\n';
   for (const client of browserClients) {
     if (client.writableLength < 12000) client.write(data);
   }
@@ -280,6 +284,25 @@ const server = http.createServer(async (req, res) => {
       return respond(res, 403, { error: 'Unknown origin' });
     }
 
+    if (route === '/api/online-health' && req.method === 'GET') {
+      return respond(res, 200, { service: 'robot-sumo', probe: onlineProbe });
+    }
+    if (route === '/api/online-control' && req.method === 'POST') {
+      if (!local || !onlineControlKey || req.headers['x-online-control'] !== onlineControlKey) {
+        return respond(res, 403, { error: 'Not authorized' });
+      }
+      const data = await readBody(req);
+      if (typeof data.ready !== 'boolean') return respond(res, 400, {});
+      const candidate = data.origin ? new URL(data.origin) : publicUrl;
+      if (!candidate || candidate.protocol !== 'https:' || candidate.username || candidate.password ||
+          candidate.pathname !== '/' || candidate.search || candidate.hash) return respond(res, 400, {});
+      if (publicUrl?.origin !== candidate.origin || internetReady !== data.ready) linkVersion++;
+      publicUrl = candidate;
+      internetReady = data.ready;
+      publish();
+      return respond(res, 200, { ok: true });
+    }
+
     if (route === '/api/setup' && req.method === 'GET') {
       if (!screenAccess) return respond(res, 403, { error: 'Open a new TV share link' });
       const links = hosts.map(ip => {
@@ -292,8 +315,8 @@ const server = http.createServer(async (req, res) => {
       });
       if (!links.length) links.push({ ip: '127.0.0.1', urls: codes.map(k => 'http://127.0.0.1:' + port + '/pad?k=' + k) });
       if (publicUrl) links.unshift({ ip: 'internet', label: 'ออนไลน์ · Wi-Fi อื่น / 4G / 5G',
-        urls: codes.map(k => publicUrl.origin + '/pad?k=' + k) });
-      return respond(res, 200, { robots: ROBOTS, arenas: ARENAS, links, session });
+        available: internetReady, urls: codes.map(k => publicUrl.origin + '/pad?k=' + k) });
+      return respond(res, 200, { robots: ROBOTS, arenas: ARENAS, links, session, linkVersion });
     }
     if (route === '/api/events' && req.method === 'GET' && screenAccess) {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
@@ -304,6 +327,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (route === '/api/qr' && req.method === 'GET' && screenAccess) {
       const ip = url.searchParams.get('ip');
+      if (ip === 'internet' && !internetReady) return respond(res, 503, { error: 'Online link is reconnecting' });
       if (player < 0 || ![...hosts, '127.0.0.1', ...(publicUrl ? ['internet'] : [])].includes(ip)) return respond(res, 400, {});
       const base = ip === 'internet' ? publicUrl.origin : 'http://' + ip + ':' + port;
       return respond(res, 200, qrSvg(base + '/pad?k=' + code), 'image/svg+xml');

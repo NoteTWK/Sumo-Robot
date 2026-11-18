@@ -70,44 +70,7 @@ async function main() {
   }
   await new Promise(resolve => probe.close(resolve));
   const executable = await cloudflared();
-  console.log('Connecting to the internet. Please wait...');
-  const tunnel = spawn(executable, ['tunnel', '--no-autoupdate', '--protocol', 'http2', '--url', 'http://127.0.0.1:' + port], {
-    cwd: __dirname, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
-  });
-  let game, ended = false;
-  const stop = () => {
-    if (ended) return;
-    ended = true;
-    game?.kill(); tunnel.kill();
-  };
-  process.on('SIGINT', stop);
-  process.on('SIGTERM', stop);
-  process.on('exit', stop);
-  try {
-    const origin = await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(Error('Tunnel connection timed out. Check your internet connection.')), 60000);
-      let output = '';
-      const read = chunk => {
-        output = (output + chunk.toString()).slice(-12000);
-        const found = output.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com\b/);
-        if (found) { clearTimeout(timeout); resolve(found[0]); }
-      };
-      tunnel.stdout.on('data', read); tunnel.stderr.on('data', read);
-      tunnel.once('error', error => { clearTimeout(timeout); reject(error); });
-      tunnel.once('exit', () => { clearTimeout(timeout); reject(Error('Cloudflare Tunnel stopped before it was ready.')); });
-    });
-    if (ended || tunnel.exitCode !== null) throw Error('Tunnel has stopped');
-    console.log('Online controllers: ' + origin);
-    console.log('Keep this window open. Scan the ONLINE QR codes shown on the local game screen.');
-    const args = ['server.cjs', ...(process.argv.includes('--open') ? ['--open'] : [])];
-    game = spawn(process.execPath, args, {
-      cwd: __dirname, windowsHide: true, stdio: 'inherit',
-      env: { ...process.env, PORT: port, PUBLIC_URL: origin }
-    });
-    tunnel.once('exit', () => { console.error('Online connection closed. Restart online mode for new QR codes.'); stop(); });
-    game.once('error', error => { console.error(error.message); stop(); process.exitCode = 1; });
-    game.once('exit', code => { stop(); if (code) process.exitCode = code; });
-  } catch (error) { stop(); throw error; }
+  await require('./online-supervisor.cjs').supervise({ executable, port, open: process.argv.includes('--open') });
 }
 
 main().catch(error => { console.error(error.message); process.exitCode = 1; });

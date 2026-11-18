@@ -22,6 +22,7 @@ let reconnectTimer;
 let connectionGeneration = 0;
 let settingsRequest = Promise.resolve();
 let qrVisible = true;
+const internetUnavailable = () => setup?.links[networkIndex]?.available === false;
 try { qrVisible = localStorage.getItem(qrPreference) !== 'true'; } catch {}
 
 async function command(action, data = {}) {
@@ -46,7 +47,8 @@ function setting(action, data) {
 
 function updateLinks() {
   const link = setup?.links[networkIndex];
-  set('network-hint', link?.ip === 'internet' ? 'สแกนได้จาก Wi-Fi อื่น หรือ 4G / 5G' : 'ใช้ Wi-Fi เดียวกับโน้ตบุ๊ก');
+  set('network-hint', internetUnavailable() ? 'กำลังเชื่อมต่ออินเทอร์เน็ตใหม่ · กรุณารอ QR ใหม่' :
+    link?.ip === 'internet' ? 'สแกนได้จาก Wi-Fi อื่น หรือ 4G / 5G' : 'ใช้ Wi-Fi เดียวกับโน้ตบุ๊ก');
   set('share-tv-hint', link?.ip === 'internet' ? 'เปิดลิงก์ผ่านอินเทอร์เน็ตได้ เครื่องหลักต้องเปิดเกมและโหมดออนไลน์ค้างไว้' : 'เปิดลิงก์จากเครื่องที่อยู่บน Wi-Fi เดียวกัน เครื่องหลักต้องเปิดอยู่');
   byId('share-tv').hidden = !online || !link?.tvUrl;
   if (!link) return;
@@ -54,7 +56,7 @@ function updateLinks() {
     const target = new URL(link.urls[Number(anchor.dataset.padLink)]);
     anchor.href = target.href;
     anchor.querySelector('img').src = '/api/qr?' + new URLSearchParams({
-      ip: link.ip, k: target.searchParams.get('k')
+      ip: link.ip, k: target.searchParams.get('k'), v: setup.linkVersion || 0
     });
   }
 }
@@ -69,6 +71,7 @@ function syncQrToggles() {
 function lobbyMessage() {
   if (revoked) return 'ลิงก์หมดอายุ · ขอจากปุ่ม “แชร์หน้าเกม” บนเครื่องที่รันเกมอีกครั้ง';
   if (!online) return setup ? 'กำลังเชื่อมต่อเกมใหม่…' : 'กำลังเชื่อมต่อเครื่องที่รันเกม…';
+  if (internetUnavailable()) return 'ลิงก์ออนไลน์ยังไม่พร้อม · กำลังสร้าง QR ใหม่';
   if (!state.connected.every(Boolean)) return 'เชื่อมต่อจอยทั้งสองฝั่งเพื่อเริ่มแข่ง';
   if (!canStart(state)) return 'ให้ทั้งสองฝั่งกด READY บนจอย';
   return 'พร้อมเริ่มการแข่งขัน';
@@ -86,7 +89,7 @@ function padStatus(s, player) {
 }
 
 function updatePadCards(s) {
-  const useQr = online && qrVisible && !s?.practice;
+  const useQr = online && qrVisible && !s?.practice && !internetUnavailable();
   cards.forEach((card, i) => {
     const text = padStatus(s, i);
     const connected = online && s?.connected[i];
@@ -102,7 +105,8 @@ function updatePadCards(s) {
     const cover = card.querySelector('.pair-cover');
     cover.hidden = useQr || Boolean(online && s?.practice);
     cover.classList.toggle('ready', Boolean(ready));
-    cover.querySelector('small').textContent = online ? text : (revoked ? 'ขอลิงก์ใหม่' : 'กำลังโหลด QR…');
+    cover.querySelector('small').textContent = internetUnavailable() ? 'กำลังตรวจสอบลิงก์ · รอ QR ใหม่' :
+      online ? text : (revoked ? 'ขอลิงก์ใหม่' : 'กำลังโหลด QR…');
     card.querySelector('.keyboard').hidden = !online || !s?.practice;
   });
 }
@@ -169,6 +173,7 @@ function updateMatch(s) {
     const missing = s.connected.map((connected, i) => connected ? '' : 'PLAYER ' + 'AB'[i]).filter(Boolean);
     title = revoked ? 'ลิงก์หมดอายุ' : 'MATCH PAUSED';
     detail = !online ? lobbyMessage() :
+      internetUnavailable() ? 'กำลังเชื่อมต่ออินเทอร์เน็ตใหม่ · กรุณารอแล้วสแกน QR ใหม่' :
       missing.join(' / ') + (qrVisible ? ' · สแกน QR เพื่อเชื่อมต่อใหม่' : ' · กดแสดง QR เพื่อเชื่อมต่อใหม่');
     variant = 'paused';
     shade = true;
@@ -194,7 +199,7 @@ function updateMatch(s) {
   set('result-title', title);
   set('result-detail', detail);
   byId('reconnect-panel').hidden = !recovering;
-  byId('reconnect-qr').hidden = !recovering || !qrVisible;
+  byId('reconnect-qr').hidden = !recovering || !qrVisible || internetUnavailable();
   reconnectLinks.forEach((link, i) => { link.hidden = !recovering || s.connected[i]; });
   byId('match-tools').hidden = !online || recovering || s.showcase;
   byId('result-actions').hidden = !s.showcase || !online;
@@ -300,6 +305,10 @@ async function connect() {
       if (events !== stream) return;
       const nextState = JSON.parse(event.data);
       if (nextState.session !== setup.session) {
+        connectionLost();
+        return;
+      }
+      if ((nextState.linkVersion || 0) !== (setup.linkVersion || 0)) {
         connectionLost();
         return;
       }
